@@ -1,11 +1,26 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { DollarSign, Clock, Trophy, Briefcase } from "lucide-react";
+import { getUserStats } from "@/lib/localStorage";
 
 export default function QuickStats() {
-  const { data: stats, isLoading } = useQuery({
-    queryKey: ["/api/analytics/user-stats"],
-  });
+  const [stats, setStats] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadStats = () => {
+      const userStats = getUserStats();
+      setStats(userStats);
+      setIsLoading(false);
+    };
+
+    loadStats();
+    // Listen for job session changes to update stats
+    const handleDataChange = () => loadStats();
+    window.addEventListener('jobSessionCreated', handleDataChange);
+    
+    return () => window.removeEventListener('jobSessionCreated', handleDataChange);
+  }, []);
 
   if (isLoading) {
     return (

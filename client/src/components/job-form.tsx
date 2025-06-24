@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -10,9 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
-import { isUnauthorizedError } from "@/lib/authUtils";
 import { PlusCircle, Plus, Save, Download } from "lucide-react";
+import { getJobTypes, createJobType, getJobTypeByName, createJobSession, exportToCSV } from "@/lib/localStorage";
 
 const sessionSchema = z.object({
   jobTypeId: z.string().min(1, "Please select a job type"),
@@ -30,12 +28,19 @@ type JobTypeFormData = z.infer<typeof jobTypeSchema>;
 
 export default function JobForm() {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const [isAddJobOpen, setIsAddJobOpen] = useState(false);
+  const [jobTypes, setJobTypes] = useState<any[]>([]);
+  const [isLoadingJobTypes, setIsLoadingJobTypes] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: jobTypes, isLoading: isLoadingJobTypes } = useQuery({
-    queryKey: ["/api/job-types"],
-  });
+  useEffect(() => {
+    const loadJobTypes = () => {
+      const types = getJobTypes();
+      setJobTypes(types);
+      setIsLoadingJobTypes(false);
+    };
+    loadJobTypes();
+  }, []);
 
   const sessionForm = useForm<SessionFormData>({
     resolver: zodResolver(sessionSchema),
@@ -54,84 +59,74 @@ export default function JobForm() {
     },
   });
 
-  const createSession = useMutation({
-    mutationFn: async (data: SessionFormData) => {
-      await apiRequest("POST", "/api/job-sessions", data);
-    },
-    onSuccess: () => {
+  const handleCreateSession = async (data: SessionFormData) => {
+    setIsSubmitting(true);
+    try {
+      createJobSession({
+        jobTypeId: parseInt(data.jobTypeId),
+        durationMinutes: data.durationMinutes,
+        earnings: data.earnings,
+        expenses: data.expenses,
+      });
+      
       toast({
         title: "Success",
         description: "Job session logged successfully!",
       });
       sessionForm.reset();
-      queryClient.invalidateQueries({ queryKey: ["/api/job-sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics/user-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics/profitability"] });
-    },
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
+      // Trigger a custom event to update other components
+      window.dispatchEvent(new CustomEvent('jobSessionCreated'));
+    } catch (error) {
       toast({
         title: "Error",
         description: "Failed to log job session. Please try again.",
         variant: "destructive",
       });
-    },
-  });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
-  const createJobType = useMutation({
-    mutationFn: async (data: JobTypeFormData) => {
-      await apiRequest("POST", "/api/job-types", data);
-    },
-    onSuccess: () => {
+  const handleCreateJobType = async (data: JobTypeFormData) => {
+    setIsSubmitting(true);
+    try {
+      // Check if job type already exists
+      const existing = getJobTypeByName(data.name);
+      if (existing) {
+        toast({
+          title: "Error",
+          description: "Job type already exists.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      createJobType(data.name);
       toast({
         title: "Success",
         description: "New job type added successfully!",
       });
       jobTypeForm.reset();
       setIsAddJobOpen(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/job-types"] });
-    },
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
+      
+      // Reload job types
+      const types = getJobTypes();
+      setJobTypes(types);
+    } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to add job type. It may already exist.",
+        description: "Failed to add job type.",
         variant: "destructive",
       });
-    },
-  });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
-  const handleExportCSV = useMutation({
-    mutationFn: async () => {
-      const response = await fetch("/api/export/csv", {
-        credentials: "include",
-      });
-      if (!response.ok) {
-        throw new Error("Failed to export CSV");
-      }
-      return response.blob();
-    },
-    onSuccess: (blob) => {
+  const handleExportCSV = () => {
+    try {
+      const csvContent = exportToCSV();
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -140,37 +135,26 @@ export default function JobForm() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      
       toast({
         title: "Success",
         description: "CSV exported successfully!",
       });
-    },
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
+    } catch (error) {
       toast({
         title: "Error",
         description: "Failed to export CSV. Please try again.",
         variant: "destructive",
       });
-    },
-  });
+    }
+  };
 
   const onSessionSubmit = (data: SessionFormData) => {
-    createSession.mutate(data);
+    handleCreateSession(data);
   };
 
   const onJobTypeSubmit = (data: JobTypeFormData) => {
-    createJobType.mutate(data);
+    handleCreateJobType(data);
   };
 
   return (
@@ -254,11 +238,11 @@ export default function JobForm() {
 
             <Button 
               type="submit" 
-              disabled={createSession.isPending}
+              disabled={isSubmitting}
               className="w-full bg-[#7289DA] hover:bg-blue-600 text-white font-medium py-3"
             >
               <Save className="mr-2 w-4 h-4" />
-              {createSession.isPending ? "Logging..." : "Log Session"}
+              {isSubmitting ? "Logging..." : "Log Session"}
             </Button>
           </form>
 
@@ -288,10 +272,10 @@ export default function JobForm() {
                   </div>
                   <Button 
                     type="submit" 
-                    disabled={createJobType.isPending}
+                    disabled={isSubmitting}
                     className="w-full bg-[#7289DA] hover:bg-blue-600 text-white"
                   >
-                    {createJobType.isPending ? "Adding..." : "Add Job Type"}
+                    {isSubmitting ? "Adding..." : "Add Job Type"}
                   </Button>
                 </form>
               </DialogContent>
@@ -309,12 +293,11 @@ export default function JobForm() {
         </CardHeader>
         <CardContent>
           <Button 
-            onClick={() => handleExportCSV.mutate()}
-            disabled={handleExportCSV.isPending}
+            onClick={handleExportCSV}
             className="w-full bg-[#43B581] hover:bg-green-600 text-white font-medium py-3"
           >
             <Download className="mr-2 w-4 h-4" />
-            {handleExportCSV.isPending ? "Exporting..." : "Export to CSV"}
+            Export to CSV
           </Button>
         </CardContent>
       </Card>

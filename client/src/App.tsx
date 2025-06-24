@@ -1,33 +1,42 @@
 import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useAuth } from "@/hooks/useAuth";
+import { useEffect } from "react";
+import { initializeDefaultData } from "@/lib/localStorage";
 import NotFound from "@/pages/not-found";
-import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 
-function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+// Mock query client for static site
+import { QueryClient } from "@tanstack/react-query";
 
+const mockQueryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+      staleTime: 0,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+
+function Router() {
   return (
     <Switch>
-      {isLoading || !isAuthenticated ? (
-        <Route path="/" component={Landing} />
-      ) : (
-        <>
-          <Route path="/" component={Dashboard} />
-        </>
-      )}
+      <Route path="/" component={Dashboard} />
       <Route component={NotFound} />
     </Switch>
   );
 }
 
 function App() {
+  useEffect(() => {
+    // Initialize localStorage data on app start
+    initializeDefaultData();
+  }, []);
+
   return (
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={mockQueryClient}>
       <TooltipProvider>
         <div className="dark">
           <Toaster />

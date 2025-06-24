@@ -1,11 +1,27 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Trophy } from "lucide-react";
+import { getJobProfitability } from "@/lib/localStorage";
 
 export default function ProfitabilityRankings() {
-  const { data: profitability, isLoading } = useQuery({
-    queryKey: ["/api/analytics/profitability"],
-  });
+  const [profitability, setProfitability] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadProfitability = () => {
+      const data = getJobProfitability();
+      setProfitability(data);
+      setIsLoading(false);
+    };
+
+    loadProfitability();
+    
+    // Listen for job session changes to update rankings
+    const handleDataChange = () => loadProfitability();
+    window.addEventListener('jobSessionCreated', handleDataChange);
+    
+    return () => window.removeEventListener('jobSessionCreated', handleDataChange);
+  }, []);
 
   if (isLoading) {
     return (

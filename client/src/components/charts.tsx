@@ -1,17 +1,31 @@
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart3, PieChart } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { getJobProfitability } from "@/lib/localStorage";
 
 export default function Charts() {
   const barChartRef = useRef<HTMLCanvasElement>(null);
   const pieChartRef = useRef<HTMLCanvasElement>(null);
   const barChartInstance = useRef<any>(null);
   const pieChartInstance = useRef<any>(null);
+  const [profitability, setProfitability] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const { data: profitability, isLoading } = useQuery({
-    queryKey: ["/api/analytics/profitability"],
-  });
+  useEffect(() => {
+    const loadProfitability = () => {
+      const data = getJobProfitability();
+      setProfitability(data);
+      setIsLoading(false);
+    };
+
+    loadProfitability();
+    
+    // Listen for job session changes to update charts
+    const handleDataChange = () => loadProfitability();
+    window.addEventListener('jobSessionCreated', handleDataChange);
+    
+    return () => window.removeEventListener('jobSessionCreated', handleDataChange);
+  }, []);
 
   useEffect(() => {
     if (!profitability || isLoading) return;

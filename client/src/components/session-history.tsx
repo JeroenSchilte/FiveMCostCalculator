@@ -1,25 +1,38 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { History, ChevronLeft, ChevronRight } from "lucide-react";
+import { getJobSessionsWithDetails, getJobTypes } from "@/lib/localStorage";
 
 export default function SessionHistory() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedJobType, setSelectedJobType] = useState("all");
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [pagination, setPagination] = useState<any>(null);
+  const [jobTypes, setJobTypes] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const limit = 10;
 
-  const { data: sessionsData, isLoading } = useQuery({
-    queryKey: ["/api/job-sessions", currentPage, limit],
-  });
+  useEffect(() => {
+    const loadData = () => {
+      const sessionsData = getJobSessionsWithDetails(limit, (currentPage - 1) * limit);
+      const jobTypesData = getJobTypes();
+      
+      setSessions(sessionsData.sessions);
+      setPagination(sessionsData.pagination);
+      setJobTypes(jobTypesData);
+      setIsLoading(false);
+    };
 
-  const { data: jobTypes } = useQuery({
-    queryKey: ["/api/job-types"],
-  });
-
-  const sessions = sessionsData?.sessions || [];
-  const pagination = sessionsData?.pagination;
+    loadData();
+    
+    // Listen for job session changes to update history
+    const handleDataChange = () => loadData();
+    window.addEventListener('jobSessionCreated', handleDataChange);
+    
+    return () => window.removeEventListener('jobSessionCreated', handleDataChange);
+  }, [currentPage, limit]);
 
   const getJobTypeColor = (jobName: string) => {
     const colorMap: { [key: string]: string } = {
